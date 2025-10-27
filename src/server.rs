@@ -1,4 +1,3 @@
-use std::fmt::Debug;
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::sync::{Arc, Mutex};
 
@@ -12,14 +11,6 @@ use crate::{
     responses::Response,
     reverse_requests::ReverseRequest,
 };
-
-#[derive(Debug)]
-enum ServerState {
-    /// Expecting a header
-    Header,
-    /// Expecting content
-    Content,
-}
 
 /// Handles message encoding and decoding of messages.
 ///
@@ -63,64 +54,66 @@ impl<R: Read, W: Write> Server<R, W> {
     /// This will start reading the `input` buffer that is passed to it and will try to interpret
     /// the incoming bytes according to the DAP protocol.
     pub fn poll_request(&mut self) -> Result<Option<Request>, ServerError> {
-        let mut state = ServerState::Header;
-        let mut buffer = String::new();
+        let mut header_buffer = String::new();
         let mut content_length: usize = 0;
 
+        // Parse headers until we get an empty line
         loop {
-            match self.input_buffer.read_line(&mut buffer) {
-                Ok(read_size) => {
-                    if read_size == 0 {
-                        break Ok(None);
-                    }
-                    match state {
-                        ServerState::Header => {
-                            let parts: Vec<&str> = buffer.trim_end().split(':').collect();
-                            if parts.len() == 2 {
-                                match parts[0] {
-                                    "Content-Length" => {
-                                        content_length = match parts[1].trim().parse() {
-                                            Ok(val) => val,
-                                            Err(_) => {
-                                                return Err(ServerError::HeaderParseError {
-                                                    line: buffer,
-                                                });
-                                            }
-                                        };
-                                        buffer.clear();
-                                        buffer.reserve(content_length);
-                                        state = ServerState::Content;
-                                    }
-                                    other => {
-                                        return Err(ServerError::UnknownHeader {
-                                            header: other.to_string(),
-                                        });
-                                    }
-                                }
-                            } else {
-                                return Err(ServerError::HeaderParseError { line: buffer });
-                            }
-                        }
-                        ServerState::Content => {
-                            buffer.clear();
-                            let mut content = vec![0; content_length];
-                            self.input_buffer
-                                .read_exact(content.as_mut_slice())
-                                .map_err(ServerError::IoError)?;
+            header_buffer.clear();
+            let bytes_read = self
+                .input_buffer
+                .read_line(&mut header_buffer)
+                .map_err(ServerError::IoError)?;
 
-                            let content = std::str::from_utf8(content.as_slice()).map_err(|e| {
-                                ServerError::ParseError(DeserializationError::DecodingError(e))
+            if bytes_read == 0 {
+                return Ok(None); // EOF
+            }
+
+            let trimmed = header_buffer.trim_end();
+
+            // Empty line signals end of headers
+            if trimmed.is_empty() {
+                break;
+            }
+
+            // Parse "Header-Name: value" format
+            if let Some(colon_pos) = trimmed.find(':') {
+                let (header_name, header_value) = trimmed.split_at(colon_pos);
+                match header_name {
+                    "Content-Length" => {
+                        content_length = header_value[1..] // Skip the ':'
+                            .trim()
+                            .parse()
+                            .map_err(|_| ServerError::HeaderParseError {
+                                line: header_buffer.clone(),
                             })?;
-                            let request: Request = serde_json::from_str(content).map_err(|e| {
-                                ServerError::ParseError(DeserializationError::SerdeError(e))
-                            })?;
-                            return Ok(Some(request));
-                        }
+                    }
+                    other => {
+                        return Err(ServerError::UnknownHeader {
+                            header: other.to_string(),
+                        });
                     }
                 }
-                Err(e) => return Err(ServerError::IoError(e)),
+            } else {
+                return Err(ServerError::HeaderParseError {
+                    line: header_buffer,
+                });
             }
         }
+
+        // Read content
+        let mut content = vec![0u8; content_length];
+        self.input_buffer
+            .read_exact(&mut content)
+            .map_err(ServerError::IoError)?;
+
+        let content_str = std::str::from_utf8(&content)
+            .map_err(|e| ServerError::ParseError(DeserializationError::DecodingError(e)))?;
+
+        let request: Request = serde_json::from_str(content_str)
+            .map_err(|e| ServerError::ParseError(DeserializationError::SerdeError(e)))?;
+
+        Ok(Some(request))
     }
 
     pub fn send(&mut self, body: Sendable) -> Result<(), ServerError> {
@@ -154,14 +147,16 @@ impl<W: Write> ServerOutput<W> {
         };
 
         let resp_json = serde_json::to_string(&message).map_err(ServerError::SerializationError)?;
+
+        // Write header and content in a single operation
         write!(
             self.output_buffer,
-            "Content-Length: {}\r\n\r\n",
-            resp_json.len()
+            "Content-Length: {}\r\n\r\n{}",
+            resp_json.len(),
+            resp_json
         )
         .map_err(ServerError::IoError)?;
 
-        write!(self.output_buffer, "{}", resp_json).map_err(ServerError::IoError)?;
         self.output_buffer.flush().map_err(ServerError::IoError)?;
         Ok(())
     }
