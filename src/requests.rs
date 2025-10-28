@@ -630,7 +630,7 @@ pub struct WriteMemoryArguments {
     pub data: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone)]
 #[serde(tag = "command", content = "arguments", rename_all = "camelCase")]
 pub enum Command {
     /// The attach request is sent from the client to the debug adapter to attach to a debuggee that
@@ -949,6 +949,406 @@ pub enum Command {
     Cancel(CancelArguments),
 }
 
+// Custom deserializer to handle both missing arguments and empty arguments object
+impl<'de> Deserialize<'de> for Command {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::{self, MapAccess, Visitor};
+        use std::fmt;
+
+        struct CommandVisitor;
+
+        impl<'de> Visitor<'de> for CommandVisitor {
+            type Value = Command;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a Command object with 'command' field")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: MapAccess<'de>,
+            {
+                let mut command_name: Option<String> = None;
+                let mut arguments: Option<Value> = None;
+
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "command" => {
+                            command_name = Some(map.next_value()?);
+                        }
+                        "arguments" => {
+                            arguments = Some(map.next_value()?);
+                        }
+                        _ => {
+                            // Ignore unknown fields
+                            let _: Value = map.next_value()?;
+                        }
+                    }
+                }
+
+                let command_name =
+                    command_name.ok_or_else(|| de::Error::missing_field("command"))?;
+
+                // For unit variants, accept both missing arguments and empty object {}
+                let is_empty_args = arguments
+                    .as_ref()
+                    .map(|v| v.is_null() || (v.is_object() && v.as_object().unwrap().is_empty()))
+                    .unwrap_or(true);
+
+                match command_name.as_str() {
+                    "attach" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::Attach(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "breakpointLocations" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::BreakpointLocations(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "completions" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::Completions(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "configurationDone" => {
+                        if !is_empty_args {
+                            return Err(de::Error::custom(
+                                "configurationDone should not have arguments",
+                            ));
+                        }
+                        Ok(Command::ConfigurationDone)
+                    }
+                    "continue" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::Continue(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "dataBreakpointInfo" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::DataBreakpointInfo(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "disassemble" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::Disassemble(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "disconnect" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::Disconnect(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "evaluate" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::Evaluate(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "exceptionInfo" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::ExceptionInfo(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "goto" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::Goto(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "gotoTargets" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::GotoTargets(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "initialize" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::Initialize(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "launch" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::Launch(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "loadedSources" => {
+                        if !is_empty_args {
+                            return Err(de::Error::custom(
+                                "loadedSources should not have arguments",
+                            ));
+                        }
+                        Ok(Command::LoadedSources)
+                    }
+                    "modules" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::Modules(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "next" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::Next(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "pause" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::Pause(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "readMemory" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::ReadMemory(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "restart" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::Restart(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "restartFrame" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::RestartFrame(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "reverseContinue" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::ReverseContinue(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "scopes" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::Scopes(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "setBreakpoints" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::SetBreakpoints(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "setDataBreakpoints" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::SetDataBreakpoints(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "setExceptionBreakpoints" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::SetExceptionBreakpoints(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "setExpression" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::SetExpression(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "setFunctionBreakpoints" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::SetFunctionBreakpoints(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "setInstructionBreakpoints" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::SetInstructionBreakpoints(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "setVariable" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::SetVariable(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "source" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::Source(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "stackTrace" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::StackTrace(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "stepBack" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::StepBack(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "stepIn" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::StepIn(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "stepInTargets" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::StepInTargets(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "stepOut" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::StepOut(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "terminate" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::Terminate(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "terminateThreads" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::TerminateThreads(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "threads" => {
+                        if !is_empty_args {
+                            return Err(de::Error::custom("threads should not have arguments"));
+                        }
+                        Ok(Command::Threads)
+                    }
+                    "variables" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::Variables(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "writeMemory" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::WriteMemory(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    "cancel" => {
+                        let args =
+                            arguments.ok_or_else(|| de::Error::missing_field("arguments"))?;
+                        Ok(Command::Cancel(
+                            serde_json::from_value(args).map_err(de::Error::custom)?,
+                        ))
+                    }
+                    _ => Err(de::Error::unknown_variant(
+                        &command_name,
+                        &[
+                            "attach",
+                            "breakpointLocations",
+                            "completions",
+                            "configurationDone",
+                            "continue",
+                            "dataBreakpointInfo",
+                            "disassemble",
+                            "disconnect",
+                            "evaluate",
+                            "exceptionInfo",
+                            "goto",
+                            "gotoTargets",
+                            "initialize",
+                            "launch",
+                            "loadedSources",
+                            "modules",
+                            "next",
+                            "pause",
+                            "readMemory",
+                            "restart",
+                            "restartFrame",
+                            "reverseContinue",
+                            "scopes",
+                            "setBreakpoints",
+                            "setDataBreakpoints",
+                            "setExceptionBreakpoints",
+                            "setExpression",
+                            "setFunctionBreakpoints",
+                            "setInstructionBreakpoints",
+                            "setVariable",
+                            "source",
+                            "stackTrace",
+                            "stepBack",
+                            "stepIn",
+                            "stepInTargets",
+                            "stepOut",
+                            "terminate",
+                            "terminateThreads",
+                            "threads",
+                            "variables",
+                            "writeMemory",
+                            "cancel",
+                        ],
+                    )),
+                }
+            }
+        }
+
+        deserializer.deserialize_map(CommandVisitor)
+    }
+}
+
 /// Represents a request from a client.
 ///
 /// Note that unlike the specification, this implementation does not define a ProtocolMessage base
@@ -1132,6 +1532,110 @@ impl Request {
                 error: None,
             }),
             _ => Err(ServerError::ResponseConstructError),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn test_zed_thread_request() {
+        // Zed/IntelliJ style: with empty arguments object
+        let thread_request = json!(
+            {
+                "type": "request",
+                "seq": 4,
+                "command": "threads",
+                "arguments": {}
+            }
+        );
+
+        let deserialized: Request = serde_json::from_value(thread_request).unwrap();
+        assert_eq!(deserialized.seq, 4);
+        match deserialized.command {
+            Command::Threads => {}
+            _ => panic!("Expected Command::Threads"),
+        }
+    }
+
+    #[test]
+    fn test_vscode_thread_request() {
+        // VS Code style: without arguments field
+        let thread_request = json!(
+            {
+                "type": "request",
+                "seq": 5,
+                "command": "threads"
+            }
+        );
+
+        let deserialized: Request = serde_json::from_value(thread_request).unwrap();
+        assert_eq!(deserialized.seq, 5);
+        match deserialized.command {
+            Command::Threads => {}
+            _ => panic!("Expected Command::Threads"),
+        }
+    }
+
+    #[test]
+    fn test_configuration_done_with_empty_args() {
+        let request = json!(
+            {
+                "type": "request",
+                "seq": 1,
+                "command": "configurationDone",
+                "arguments": {}
+            }
+        );
+
+        let deserialized: Request = serde_json::from_value(request).unwrap();
+        match deserialized.command {
+            Command::ConfigurationDone => {}
+            _ => panic!("Expected Command::ConfigurationDone"),
+        }
+    }
+
+    #[test]
+    fn test_configuration_done_without_args() {
+        let request = json!(
+            {
+                "type": "request",
+                "seq": 1,
+                "command": "configurationDone"
+            }
+        );
+
+        let deserialized: Request = serde_json::from_value(request).unwrap();
+        match deserialized.command {
+            Command::ConfigurationDone => {}
+            _ => panic!("Expected Command::ConfigurationDone"),
+        }
+    }
+
+    #[test]
+    fn test_command_with_real_arguments() {
+        // Test that commands with real arguments still work
+        let request = json!(
+            {
+                "type": "request",
+                "seq": 2,
+                "command": "continue",
+                "arguments": {
+                    "threadId": 1
+                }
+            }
+        );
+
+        let deserialized: Request = serde_json::from_value(request).unwrap();
+        match deserialized.command {
+            Command::Continue(args) => {
+                assert_eq!(args.thread_id, 1);
+            }
+            _ => panic!("Expected Command::Continue"),
         }
     }
 }

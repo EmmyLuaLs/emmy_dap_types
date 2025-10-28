@@ -2,6 +2,13 @@
 name = "emmy_dap_types"
 version = "0.1.0"
 edition = "2024"
+authors = ["CppCXY"]
+license = "MIT"
+description = "Rust types for Debug Adapter Protocol (DAP) - forked from dap-rs with cross-editor compatibility enhancements"
+repository = "https://github.com/EmmyLuaLs/emmy_dap_types"
+keywords = ["dap", "debug", "protocol"]
+categories = ["development-tools"]
+readme = "README.md"
 
 [dependencies]
 serde = { version = "1.0.228", features = ["derive"] }
