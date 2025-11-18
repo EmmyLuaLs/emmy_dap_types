@@ -1404,7 +1404,17 @@ impl Request {
             request_seq: self.seq,
             success: false,
             message: Some(ResponseMessage::Error(error.to_string())),
-            body: None,
+            body: self.get_error_body(),
+            error: None,
+        }
+    }
+
+    pub fn error_with_body(self, error: &str, body: ResponseBody) -> Response {
+        Response {
+            request_seq: self.seq,
+            success: false,
+            message: Some(ResponseMessage::Error(error.to_string())),
+            body: Some(body),
             error: None,
         }
     }
@@ -1532,6 +1542,27 @@ impl Request {
                 error: None,
             }),
             _ => Err(ServerError::ResponseConstructError),
+        }
+    }
+
+    fn get_error_body(&self) -> Option<ResponseBody> {
+        match &self.command {
+            Command::Attach(_) => Some(ResponseBody::Attach),
+            Command::ConfigurationDone => Some(ResponseBody::ConfigurationDone),
+            Command::Disconnect(_) => Some(ResponseBody::Disconnect),
+            Command::Goto(_) => Some(ResponseBody::Goto),
+            Command::Launch(_) => Some(ResponseBody::Launch),
+            Command::Next(_) => Some(ResponseBody::Next),
+            Command::Pause(_) => Some(ResponseBody::Pause),
+            Command::Restart(_) => Some(ResponseBody::Next),
+            Command::RestartFrame(_) => Some(ResponseBody::RestartFrame),
+            Command::ReverseContinue(_) => Some(ResponseBody::ReverseContinue),
+            Command::StepBack(_) => Some(ResponseBody::StepBack),
+            Command::StepIn(_) => Some(ResponseBody::StepIn),
+            Command::StepOut(_) => Some(ResponseBody::StepOut),
+            Command::Terminate(_) => Some(ResponseBody::Terminate),
+            Command::TerminateThreads(_) => Some(ResponseBody::TerminateThreads),
+            _ => None,
         }
     }
 }
